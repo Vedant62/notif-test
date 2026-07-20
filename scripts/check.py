@@ -14,7 +14,7 @@ import ssl
 import sys
 import tempfile
 import urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import certifi
@@ -27,6 +27,7 @@ FACILITY_URL = f"{BASE_URL}/vtop/phyedu/facilityAvailable"
 STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "last_state.json"
 FACILITY_FILTER = "gymnasium"  # substring match, case-insensitive
 CSRF_RE = re.compile(r'name="_csrf"[^>]*value="([^"]+)"')
+HEARTBEAT_INTERVAL = timedelta(minutes=30)
 
 # vtopcc.vit.ac.in serves an incomplete TLS chain (leaf cert only, no
 # intermediate). Browsers paper over this with cached intermediates;
@@ -115,23 +116,42 @@ def load_previous_state() -> dict:
     if not STATE_PATH.exists():
         return {}
     try:
-        return json.loads(STATE_PATH.read_text()).get("facilities", {})
+        return json.loads(STATE_PATH.read_text())
     except (json.JSONDecodeError, OSError):
         return {}
 
 
-def save_state(facilities: dict) -> None:
+def save_state(facilities: dict, last_heartbeat_utc: str | None) -> None:
     STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
     STATE_PATH.write_text(
         json.dumps(
             {
                 "last_checked_utc": datetime.now(timezone.utc).isoformat(),
+                "last_heartbeat_utc": last_heartbeat_utc,
                 "facilities": facilities,
             },
             indent=2,
         )
         + "\n"
     )
+
+
+def heartbeat_due(last_heartbeat_utc: str | None) -> bool:
+    if not last_heartbeat_utc:
+        return True
+    try:
+        last = datetime.fromisoformat(last_heartbeat_utc)
+    except ValueError:
+        return True
+    return datetime.now(timezone.utc) - last >= HEARTBEAT_INTERVAL
+
+
+def summarize_status(facilities: dict) -> str:
+    statuses = {info["status"] for info in facilities.values()}
+    if len(statuses) == 1:
+        return f"All {len(facilities)} tracked gym slots: {statuses.pop()}"
+    lines = [f"{name}: {info['status']}" for name, info in facilities.items()]
+    return "\n".join(lines)
 
 
 def diff_facilities(previous: dict, current: dict) -> list[str]:
@@ -182,8 +202,9 @@ def main() -> int:
         )
         return 0
 
-    previous = load_previous_state()
-    changes = diff_facilities(previous, current)
+    previous_state = load_previous_state()
+    changes = diff_facilities(previous_state.get("facilities", {}), current)
+    last_heartbeat_utc = previous_state.get("last_heartbeat_utc")
 
     if changes:
         notify(
@@ -192,10 +213,22 @@ def main() -> int:
             "\n".join(changes),
         )
         print("Change(s) detected and notified:\n" + "\n".join(changes))
+        # A change notification counts as "you've been informed" — no need
+        # for a heartbeat right after it.
+        last_heartbeat_utc = datetime.now(timezone.utc).isoformat()
+    elif heartbeat_due(last_heartbeat_utc):
+        last_heartbeat_utc = datetime.now(timezone.utc).isoformat()
+        notify(
+            ntfy_topic,
+            "VIT Gym check-in",
+            f"Checked at {last_heartbeat_utc} — still closed.\n"
+            + summarize_status(current),
+        )
+        print("No change, but heartbeat was due — sent.")
     else:
-        print("No change since last check.")
+        print("No change since last check; heartbeat not due yet.")
 
-    save_state(current)
+    save_state(current, last_heartbeat_utc)
     return 0
 
 
