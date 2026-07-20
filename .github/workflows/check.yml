@@ -1,0 +1,43 @@
+name: Check VTOP Gym Registration
+
+on:
+  schedule:
+    # Every 10 minutes — more frequent than VTOP's idle session timeout
+    # (~15-30 min), so each authenticated poll itself keeps the session
+    # alive. See README for what happens when it dies anyway.
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vtop-gym-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - name: Run check
+        env:
+          VTOP_COOKIE: ${{ secrets.VTOP_COOKIE }}
+          VTOP_REG_NO: ${{ secrets.VTOP_REG_NO }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+        run: python scripts/check.py
+
+      - name: Commit updated state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/last_state.json
+          git diff --cached --quiet || git commit -m "chore: update gym registration state"
+          git push

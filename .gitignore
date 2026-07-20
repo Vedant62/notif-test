@@ -1,0 +1,6 @@
+.vtop_cookie
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
