@@ -16,10 +16,10 @@ Login is CAPTCHA-gated, so this project **never automates login**. Instead:
 
 1. You log in once, manually, in a real browser.
 2. A session cookie from that login is stored as a GitHub Actions secret.
-3. A workflow polls the facility endpoint every 10 minutes using that cookie
+3. A workflow polls the facility endpoint every 5 minutes using that cookie
    (refreshing VTOP's short-lived CSRF token from an authenticated page on
    every run — the CSRF token rotates per-request, the cookie doesn't).
-4. Polling every 10 minutes is *more frequent* than VTOP's idle session
+4. Polling every 5 minutes is *more frequent* than VTOP's idle session
    timeout (~15-30 min), so the polling itself should keep the session
    alive indefinitely. If the session ever does die anyway (Actions outage,
    VTOP maintenance, etc.), the workflow sends you **one** ntfy notification

@@ -2,10 +2,13 @@ name: Check VTOP Gym Registration
 
 on:
   schedule:
-    # Every 10 minutes — more frequent than VTOP's idle session timeout
-    # (~15-30 min), so each authenticated poll itself keeps the session
-    # alive. See README for what happens when it dies anyway.
-    - cron: "*/10 * * * *"
+    # Every 5 minutes (GitHub Actions' minimum) — comfortably more frequent
+    # than VTOP's idle session timeout (~15-30 min), so each authenticated
+    # poll itself keeps the session alive. See README for what happens when
+    # it dies anyway. Fine on Actions minutes since this repo is public
+    # (unlimited free minutes) — reconsider the interval if it's ever made
+    # private (2,000 free minutes/month there).
+    - cron: "*/5 * * * *"
   workflow_dispatch: {}
 
 permissions:
