@@ -10,10 +10,14 @@ POST.
 import json
 import os
 import re
+import ssl
 import sys
+import tempfile
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
+import certifi
 import requests
 from bs4 import BeautifulSoup
 
@@ -24,10 +28,38 @@ STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "last_state.json
 FACILITY_FILTER = "gymnasium"  # substring match, case-insensitive
 CSRF_RE = re.compile(r'name="_csrf"[^>]*value="([^"]+)"')
 
+# vtopcc.vit.ac.in serves an incomplete TLS chain (leaf cert only, no
+# intermediate). Browsers paper over this with cached intermediates;
+# `requests`/OpenSSL don't, and fail strict verification. The intermediate's
+# own well-known distribution URL (from the leaf cert's Authority
+# Information Access extension) is plain HTTP, so fetching it doesn't hit
+# the same problem.
+MISSING_INTERMEDIATE_URL = "http://crt.sectigo.com/SectigoRSADomainValidationSecureServerCA.crt"
+
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
+
+
+def build_ca_bundle() -> str:
+    """Return a CA bundle path = certifi's default + the missing intermediate.
+
+    Falls back to certifi's default bundle (i.e. verification will behave as
+    before, possibly failing) if the intermediate can't be fetched for any
+    reason — this never silently disables verification.
+    """
+    default_bundle = certifi.where()
+    try:
+        der_bytes = urllib.request.urlopen(MISSING_INTERMEDIATE_URL, timeout=15).read()
+        pem = ssl.DER_cert_to_PEM_cert(der_bytes)
+    except Exception as exc:  # noqa: BLE001 - best-effort, fall back below
+        print(f"Could not fetch missing intermediate cert: {exc}", file=sys.stderr)
+        return default_bundle
+
+    combined_path = Path(tempfile.gettempdir()) / "vtop_ca_bundle.pem"
+    combined_path.write_text(Path(default_bundle).read_text() + "\n" + pem)
+    return str(combined_path)
 
 
 def notify(topic: str, title: str, message: str) -> None:
@@ -128,6 +160,7 @@ def main() -> int:
 
     session = requests.Session()
     session.headers.update({"Cookie": cookie, "User-Agent": USER_AGENT})
+    session.verify = build_ca_bundle()
 
     csrf_token = fetch_csrf_token(session)
     if not csrf_token:
