@@ -1,5 +1,5 @@
 {
-  "last_checked_utc": "2026-07-20T06:33:10.160342+00:00",
+  "last_checked_utc": "2026-07-20T06:38:47.043672+00:00",
   "facilities": {
     "A/C Gymnasium 06 PM TO 07 PM": {
       "fee": "6500",
@@ -13,8 +13,8 @@
     },
     "A/C Gymnasium 06 AM TO 07 AM": {
       "fee": "6500",
-      "seats_available": "4",
-      "status": "Register"
+      "seats_available": "0",
+      "status": "Registration Closed"
     },
     "A/C Gymnasium 07 PM TO 08 PM": {
       "fee": "6500",
