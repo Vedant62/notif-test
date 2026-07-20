@@ -28,6 +28,10 @@ STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "last_state.json
 FACILITY_FILTER = "gymnasium"  # substring match, case-insensitive
 CSRF_RE = re.compile(r'name="_csrf"[^>]*value="([^"]+)"')
 HEARTBEAT_INTERVAL = timedelta(minutes=30)
+SESSION_EXPIRED_MESSAGE = (
+    "The stored VTOP_COOKIE is no longer valid. Log in manually and "
+    "refresh the GitHub Actions secret to resume monitoring."
+)
 
 # vtopcc.vit.ac.in serves an incomplete TLS chain (leaf cert only, no
 # intermediate). Browsers paper over this with cached intermediates;
@@ -72,6 +76,10 @@ def notify(topic: str, title: str, message: str) -> None:
     )
 
 
+class SessionExpired(Exception):
+    """The stored VTOP_COOKIE no longer maps to a live, logged-in session."""
+
+
 def fetch_csrf_token(session: requests.Session) -> str | None:
     resp = session.get(CONTENT_URL, timeout=20)
     match = CSRF_RE.search(resp.text)
@@ -93,6 +101,14 @@ def fetch_facility_rows(session: requests.Session, csrf_token: str, reg_no: str)
         },
         timeout=20,
     )
+    if resp.status_code == 404:
+        # VTOP returns a plain 404 (not 401/403) from this endpoint once the
+        # session is dead — confirmed both for a fully logged-out request and
+        # for a stale-but-plausible-looking cookie. Spring hands out a CSRF
+        # token to anonymous sessions too, so `_csrf` being present on
+        # /vtop/content is *not* sufficient proof of being logged in — this
+        # 404 on the actual data endpoint is the reliable signal.
+        raise SessionExpired
     resp.raise_for_status()
 
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -184,16 +200,19 @@ def main() -> int:
 
     csrf_token = fetch_csrf_token(session)
     if not csrf_token:
+        # Extremely unlikely in practice (Spring hands out a CSRF token even
+        # to anonymous sessions), but cheap to keep as a first-line check.
         print("Session appears to be dead (no _csrf token found).", file=sys.stderr)
-        notify(
-            ntfy_topic,
-            "VTOP session expired",
-            "The stored VTOP_COOKIE is no longer valid. Log in manually and "
-            "refresh the GitHub Actions secret to resume monitoring.",
-        )
+        notify(ntfy_topic, "VTOP session expired", SESSION_EXPIRED_MESSAGE)
         return 0
 
-    current = fetch_facility_rows(session, csrf_token, reg_no)
+    try:
+        current = fetch_facility_rows(session, csrf_token, reg_no)
+    except SessionExpired:
+        print("Session appears to be dead (facilityAvailable returned 404).", file=sys.stderr)
+        notify(ntfy_topic, "VTOP session expired", SESSION_EXPIRED_MESSAGE)
+        return 0
+
     if not current:
         print(
             f"No facilities matched filter '{FACILITY_FILTER}' — page shape may "
