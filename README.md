@@ -28,7 +28,7 @@ Login is CAPTCHA-gated, so this project **never automates login**. Instead:
 5. Only gym facilities are tracked (rows whose name contains "Gymnasium").
    Change `FACILITY_FILTER` in `scripts/check.py` to watch something else.
 6. Notifications: an instant push the moment a tracked slot's status
-   actually changes, **plus** a "still closed" heartbeat every 30 minutes
+   actually changes, **plus** a "still closed" heartbeat every 15 minutes
    so you know it's actively checking rather than silently stuck. Change
    `HEARTBEAT_INTERVAL` in `scripts/check.py` to adjust that cadence (or
    remove the `elif heartbeat_due(...)` branch in `main()` to go back to

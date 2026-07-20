@@ -27,7 +27,7 @@ FACILITY_URL = f"{BASE_URL}/vtop/phyedu/facilityAvailable"
 STATE_PATH = Path(__file__).resolve().parent.parent / "state" / "last_state.json"
 FACILITY_FILTER = "gymnasium"  # substring match, case-insensitive
 CSRF_RE = re.compile(r'name="_csrf"[^>]*value="([^"]+)"')
-HEARTBEAT_INTERVAL = timedelta(minutes=30)
+HEARTBEAT_INTERVAL = timedelta(minutes=15)
 SESSION_EXPIRED_MESSAGE = (
     "The stored VTOP_COOKIE is no longer valid. Log in manually and "
     "refresh the GitHub Actions secret to resume monitoring."
